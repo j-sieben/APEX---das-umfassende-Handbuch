@@ -532,3 +532,28 @@ select emp_id,
   left join hr_departments on emp_dep_id = dep_id
   left join hr_locations on dep_loc_id = loc_id;
   
+  
+prompt . EMP_UI_DEPT_OVERVIEW_MASTER
+create or replace view emp_ui_dept_overview_master as
+select dep_id, dep_name, dep_mgr_id, dep_loc_id
+  from hr_departments;
+  
+  
+prompt . EMP_UI_DEPT_OVERVIEW_EMPLOYEES
+create or replace view emp_ui_dept_overview_employees as
+select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
+  from hr_employees;
+  
+  
+prompt . EMP_UI_DEPT_OVERVIEW_LOCATIONS
+create or replace view emp_ui_dept_overview_locations as
+select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, cou_name
+  from hr_locations
+  join hr_countries
+    on loc_cou_id = cou_id
+ where exists(
+       select null
+         from hr_departments
+        where dep_loc_id = loc_id);
+  
+  
