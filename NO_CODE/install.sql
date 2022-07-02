@@ -54,10 +54,11 @@ create table hr_locations(
   loc_city varchar2(30char) constraint loc_city_nn not null,
   loc_state_province varchar2(25 char),
   loc_cou_id char(2 byte),
+  loc_geometry sdo_geometry,
   constraint hr_locations_pk primary key (loc_id),
   constraint loc_cou_id_fk foreign key (loc_cou_id)
     references hr_countries(cou_id) 
-)organization index;
+) organization index;
 
 create sequence hr_locations_seq
  start with     3300
@@ -642,7 +643,7 @@ create or replace view emp_ui_lov_jobs as
 select job_title display_name, job_id return_value
   from hr_jobs;
     
-prompt . EMP_UI_LOV_SALARY_RANGES
+prompt .  EMP_UI_LOV_SALARY_RANGES
 create or replace view emp_ui_lov_salary_ranges as
 with data as(
        select emp_salary, ntile(5) over (order by emp_salary) emp_salary_range
@@ -651,6 +652,11 @@ select to_char(min(emp_salary), 'fm999G990') || ' - ' || to_char(coalesce((lead(
        min(emp_salary) || '|' || coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)) range
   from data
  group by emp_salary_range;
+ 
+prompt .  EMP_UI_LOV_COUNTRIES
+create or replace view emp_ui_lov_countries as
+select cou_name display_name, cou_id return_value
+  from hr_countries;
  
 prompt .  EMP_UI_REPORT_MAIN
 create or replace view emp_ui_report_main as
@@ -685,5 +691,34 @@ select emp_dep_id,
   join hr_departments
     on emp_dep_id = dep_id;
   
-  
-  
+prompt .  EMP_UI_LOC_ADMIN
+create or replace view emp_ui_loc_admin as
+select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, 
+       cou_name loc_country_name
+  from hr_locations
+  join hr_countries
+    on loc_cou_id = cou_id;
+    
+prompt . EMP_UI_LOC_EDIT
+create or replace view emp_ui_loc_edit as
+select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, loc_cou_id, loc_geometry
+  from hr_locations;
+
+prompt . EMP_UI_LOC_ADMIN_CARDS
+create or replace view emp_ui_loc_admin_cards as
+select loc_id, 
+       cou_name || ', ' || loc_city loc_headline,
+       loc_street_address,
+       loc_postal_code || ' ' || loc_city loc_address,
+       loc_department_list,
+       coalesce(to_char(l.loc_geometry.sdo_point.x, '9990.999999'), '0.0') loc_longitude,
+       coalesce(to_char(l.loc_geometry.sdo_point.y, '9990.999999'), '0.0') loc_latitude
+  from hr_locations l
+  join hr_countries
+    on loc_cou_id = cou_id
+  join (
+       select dep_loc_id, listagg(dep_name, ',') within group (order by dep_name) loc_department_list
+         from hr_departments
+        group by dep_loc_id)
+    on loc_id = dep_loc_id;
+    
