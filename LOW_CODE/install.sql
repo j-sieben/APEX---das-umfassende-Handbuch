@@ -1,14 +1,22 @@
---create user buch_no_code identified by "start!1234";-- default tablespace users;
 
-grant connect, resource to buch_no_code;
-
-alter user buch_no_code quota unlimited on users;
+alter session set container=apx212pdb;
 
 grant create view, create materialized view, create synonym to resource;
 
-alter session set container=apx221pdb;
-alter session set current_schema=buch_no_code;
+create user buch_lc_data identified by "start!1234" default tablespace users;
 
+grant connect, resource to buch_lc_data;
+
+alter user buch_lc_data default tablespace users quota unlimited on users;
+
+
+create user buch_lc_apex identified by "start!1234" default tablespace users;
+
+grant connect, resource to buch_lc_apex;
+
+alter user buch_lc_apex quota unlimited on users;
+
+alter session set current_schema=buch_lc_data;
 
 begin
   dbms_network_acl_admin.append_host_ace( 
@@ -17,7 +25,7 @@ begin
     upper_port => 80,
     ace => xs$ace_type(
              privilege_list => xs$name_list('http'), 
-             principal_name => 'APEX_220100',
+             principal_name => 'APEX_210200',
              principal_type => xs_acl.ptype_db));
 end; 
 /
@@ -467,6 +475,116 @@ select emp_id, job_id, emp_mgr_id, dep_id, loc_id, cou_id,
   join hr_countries on loc_cou_id = cou_id
   join hr_regions on cou_reg_id = reg_id;
   
+  
+create or replace package bl_emp
+  authid definer
+as
+  procedure merge_employee(
+    p_row in out nocopy hr_employees%rowtype);
+    
+  procedure delete_employee(
+    p_row in hr_employees%rowtype);
+    
+  procedure validate_employee(
+    p_row in hr_employees%rowtype);
+    
+end bl_emp;
+/
+
+create or replace package body bl_emp
+as
+
+  procedure merge_employee(
+    p_row in out nocopy hr_employees%rowtype)
+  as
+  begin
+    validate_employee(p_row);
+    
+    -- Initialisierung
+    p_row.emp_id := coalesce(p_row.emp_id, hr_employees_seq.nextval);
+    
+    merge into hr_employees t
+    using (select p_row.emp_id emp_id,
+                  p_row.emp_first_name emp_first_name,
+                  p_row.emp_last_name emp_last_name,
+                  p_row.emp_email emp_email,
+                  p_row.emp_phone_number emp_phone_number,
+                  p_row.emp_hire_date emp_hire_date,
+                  p_row.emp_job_id emp_job_id,
+                  p_row.emp_salary emp_salary,
+                  p_row.emp_commission_pct emp_commission_pct,
+                  p_row.emp_mgr_id emp_mgr_id,
+                  p_row.emp_dep_id emp_dep_id
+             from dual) s
+       on (t.emp_id = s.emp_id)
+     when matched then update set
+       t.emp_first_name = s.emp_first_name,
+       t.emp_last_name = s.emp_last_name,
+       t.emp_email = s.emp_email,
+       t.emp_phone_number = s.emp_phone_number,
+       t.emp_hire_date = s.emp_hire_date,
+       t.emp_job_id = s.emp_job_id,
+       t.emp_salary = s.emp_salary,
+       t.emp_commission_pct = s.emp_commission_pct,
+       t.emp_mgr_id = s.emp_mgr_id,
+       t.emp_dep_id = s.emp_dep_id
+     when not matched then insert (
+            emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number,
+            emp_hire_date, emp_job_id, emp_salary , emp_commission_pct, emp_mgr_id, emp_dep_id)
+          values(
+            s.emp_id, s.emp_first_name, s.emp_last_name, s.emp_email, s.emp_phone_number,
+            s.emp_hire_date, s.emp_job_id, s.emp_salary, s.emp_commission_pct, s.emp_mgr_id, s.emp_dep_id);
+  end merge_employee;
+  
+  
+  procedure delete_employee(
+    p_row in hr_employees%rowtype)
+  as
+  begin
+    delete from hr_employees
+     where emp_id = p_row.emp_id;
+  end delete_employee;
+  
+    
+  procedure validate_employee(
+    p_row in hr_employees%rowtype)
+  as
+  begin
+    null;
+  end validate_employee;
+    
+end bl_emp;
+/
+  
+  
+prompt Benutzerrechte an buch_lc_apex erteilen
+
+grant select on hr_employees to buch_lc_apex;
+grant select on hr_departments to buch_lc_apex;
+grant select on hr_jobs to buch_lc_apex;
+grant select on hr_locations to buch_lc_apex;
+grant select on hr_countries to buch_lc_apex;
+grant select on hr_regions to buch_lc_apex;
+
+grant select on hr_emp_details to buch_lc_apex;
+
+grant execute on bl_emp to buch_lc_apex;
+
+alter session set current_schema=buch_lc_apex;
+
+declare
+  cursor granted_objects_cur is
+    select 'create or replace synonym ' || object_name || ' for ' || owner || '.' || object_name script
+      from all_objects
+     where owner = 'BUCH_LC_DATA'
+       and object_type in ('TABLE', 'VIEW', 'PACKAGE');
+begin
+  for obj in granted_objects_cur loop
+    execute immediate obj.script;
+  end loop;
+end;
+/
+
 prompt . EMP_UI_DEPT_OVERVIEW_EMPLOYEES
 create or replace view emp_ui_dept_overview_employees as
 select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
@@ -743,3 +861,140 @@ select loc_id,
         group by dep_loc_id)
     on loc_id = dep_loc_id;
     
+
+create or replace view emp_ui_emp_edit as
+select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number,emp_hire_date,
+       emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
+  from hr_employees;
+    
+    
+create or replace package emp_ui
+  authid definer
+as
+  subtype flag_type is char(1 byte);
+  
+  function c_true
+    return flag_type;
+    
+  function c_false
+    return flag_type;
+
+  function check_email_is_unique(
+    p_emp_id in varchar2,
+    p_emp_email in varchar2)
+  return flag_type;
+
+  function job_is_commission_eligible(
+    p_job_id in varchar2)
+    return flag_type;
+  
+  procedure process_emp_edit(
+    p_emp_id in varchar2,
+    p_emp_first_name in varchar2,
+    p_emp_last_name in varchar2,
+    p_emp_email in varchar2,
+    p_emp_phone_number in varchar2,
+    p_emp_hire_date in varchar2,
+    p_emp_job_id in varchar2,
+    p_emp_salary in varchar2,
+    p_emp_commission_pct in varchar2,
+    p_emp_mgr_id in varchar2,
+    p_emp_dep_id in varchar2);
+    
+end emp_ui;
+/
+
+   
+    
+create or replace package body emp_ui
+as
+
+  function c_true
+    return flag_type
+  as
+  begin
+    return 'Y';
+  end c_true;
+  
+  
+  function c_false
+    return flag_type
+  as
+  begin
+    return 'N';
+  end c_false;
+  
+
+  function check_email_is_unique(
+    p_emp_id in varchar2,
+    p_emp_email in varchar2)
+  return flag_type
+  as
+   l_email_found flag_type;
+  begin
+    select case count(*) when 1 then emp_ui.c_true else emp_ui.c_false end
+      into l_email_found
+      from hr_employees 
+     where emp_email = p_emp_email
+       and emp_id != p_emp_id;
+       
+    return l_email_found;
+  end check_email_is_unique;
+  
+       
+  function job_is_commission_eligible(
+    p_job_id in varchar2)
+    return flag_type
+  as
+    l_job_is_commission_eligible hr_jobs.job_is_commission_eligible%type;
+  begin
+    select job_is_commission_eligible
+      into l_job_is_commission_eligible
+      from hr_jobs
+     where job_id = p_job_id;
+    
+    return l_job_is_commission_eligible;
+  exception
+    when NO_DATA_FOUND then
+      return c_false;
+  end job_is_commission_eligible;
+  
+
+  procedure process_emp_edit(
+    p_emp_id in varchar2,
+    p_emp_first_name in varchar2,
+    p_emp_last_name in varchar2,
+    p_emp_email in varchar2,
+    p_emp_phone_number in varchar2,
+    p_emp_hire_date in varchar2,
+    p_emp_job_id in varchar2,
+    p_emp_salary in varchar2,
+    p_emp_commission_pct in varchar2,
+    p_emp_mgr_id in varchar2,
+    p_emp_dep_id in varchar2)
+  as
+    l_row hr_employees%rowtype;
+  begin
+    -- Daten typsicher umkopieren
+    l_row.emp_id := to_number(p_emp_id);
+    l_row.emp_first_name := p_emp_first_name;
+    l_row.emp_last_name := p_emp_last_name;
+    l_row.emp_email := upper(trim(p_emp_email));
+    l_row.emp_phone_number := p_emp_phone_number;
+    l_row.emp_hire_date := to_date(p_emp_hire_date, 'dd.mm.yyyy');
+    l_row.emp_job_id := p_emp_job_id;
+    l_row.emp_salary := to_number(p_emp_salary, '999999999D99');
+    l_row.emp_commission_pct := to_number(p_emp_commission_pct, '99D99');
+    l_row.emp_mgr_id := to_number(p_emp_mgr_id);
+    l_row.emp_dep_id := p_emp_dep_id;
+    
+    if v('APEX$ROW_STATUS') = 'D' then
+      bl_emp.delete_employee(l_row);
+    else
+      bl_emp.merge_employee(l_row);
+    end if; 
+    
+  end process_emp_edit;
+    
+end emp_ui;
+/
