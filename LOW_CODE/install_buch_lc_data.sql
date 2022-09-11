@@ -1,35 +1,4 @@
 
-alter session set container=apx212pdb;
-
-grant create view, create materialized view, create synonym to resource;
-
-create user buch_lc_data identified by "start!1234" default tablespace users;
-
-grant connect, resource to buch_lc_data;
-
-alter user buch_lc_data default tablespace users quota unlimited on users;
-
-
-create user buch_lc_apex identified by "start!1234" default tablespace users;
-
-grant connect, resource to buch_lc_apex;
-
-alter user buch_lc_apex quota unlimited on users;
-
-alter session set current_schema=buch_lc_data;
-
-begin
-  dbms_network_acl_admin.append_host_ace( 
-    host => 'raw.githubusercontent.com', 
-    lower_port => 80,
-    upper_port => 80,
-    ace => xs$ace_type(
-             privilege_list => xs$name_list('http'), 
-             principal_name => 'APEX_210200',
-             principal_type => xs_acl.ptype_db));
-end; 
-/
-
 set serveroutput on
 
 declare
@@ -51,6 +20,7 @@ begin
 end;
 /
 
+alter session set current_schema = BUCH_LC_DATA;
 
 Prompt ******  Creating HR_REGIONS table ....
 
@@ -555,446 +525,95 @@ as
     
 end bl_emp;
 /
-  
-  
-prompt Benutzerrechte an buch_lc_apex erteilen
 
-grant select on hr_employees to buch_lc_apex;
-grant select on hr_departments to buch_lc_apex;
-grant select on hr_jobs to buch_lc_apex;
-grant select on hr_locations to buch_lc_apex;
-grant select on hr_countries to buch_lc_apex;
-grant select on hr_regions to buch_lc_apex;
-
-grant select on hr_emp_details to buch_lc_apex;
-
-grant execute on bl_emp to buch_lc_apex;
-
-alter session set current_schema=buch_lc_apex;
-
-declare
-  cursor granted_objects_cur is
-    select 'create or replace synonym ' || object_name || ' for ' || owner || '.' || object_name script
-      from all_objects
-     where owner = 'BUCH_LC_DATA'
-       and object_type in ('TABLE', 'VIEW', 'PACKAGE');
-begin
-  for obj in granted_objects_cur loop
-    execute immediate obj.script;
-  end loop;
-end;
-/
-
-prompt . EMP_UI_DEPT_OVERVIEW_EMPLOYEES
-create or replace view emp_ui_dept_overview_employees as
-select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
-  from hr_employees;
-  
-  
-prompt . EMP_UI_DEPT_OVERVIEW_LOCATIONS
-create or replace view emp_ui_dept_overview_locations as
-select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, cou_name
-  from hr_locations
-  join hr_countries
-    on loc_cou_id = cou_id
- where exists(
-       select null
-         from hr_departments
-        where dep_loc_id = loc_id);
-  
-prompt . EMP_UI_DEPT_OVERVIEW_MASTER
-create or replace view emp_ui_dept_overview_master as
-select dep_id, dep_name, dep_mgr_id, dep_loc_id
-  from hr_departments;
-  
-  
-prompt .  EMP_UI_EMP_ADMIN_MAIN
-create or replace view emp_ui_emp_admin_main as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       job_title,
-       dep_id,
-       dep_name
-  from hr_employees
-  join hr_jobs on emp_job_id = job_id
-  left join hr_departments on emp_dep_id = dep_id;
-  
-prompt .  EMP_UI_EMP_ADMIN_MAIN_ICON
-create or replace view emp_ui_emp_admin_main_icon as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       job_title,
-       dep_id,
-       dep_name,
-       case (select count(*) is_manager
-         from dual
-        where exists(
-              select null
-                from hr_employees m
-               where m.emp_mgr_id = e.emp_id)) when 1 then 'fa-check' else 'fa-times' end is_manager,
-       coalesce(loc_city || ', ' || loc_street_address, 'ohne Abteilung') emp_last_name_title
-  from hr_employees e
-  join hr_jobs on emp_job_id = job_id
-  left join hr_departments on emp_dep_id = dep_id
-  left join hr_locations on dep_loc_id = loc_id;
-  
-prompt . EMP_UI_EMP_LOAD_EXCEPTIONS
-create or replace view emp_ui_emp_load_exceptions as
-select n001 row_pointer, substr(c001, 12) error_message
-  from apex_collections
- where collection_name = 'HR_EMPLOYEES_EXCEPTIONS';
-  
-prompt . EMP_UI_EMP_LOAD_EMAIN
-create or replace view emp_ui_emp_load_main as
-with params as (
-       select /*+ no_merge */ v('P2_FILE') p_file,
-              v('P2_XLSX_WORKSHEET') p_xsls_worksheet,
-              'Mitarbeiterliste' p_static
-         from dual)
-select line_number,
-       col001, col002, col003, col004, col005, col006, col007, col008, col009, col010
-       -- add more columns (col011 to col300) here.
-  from apex_application_temp_files
-  join params p
-    on name = p_file
- cross join table( 
-         apex_data_parser.parse(
-           p_content => blob_content,
-           p_file_name => filename,
-           p_xlsx_sheet_name => case when p_xsls_worksheet is not null then p_xsls_worksheet end,
-           p_file_profile => apex_data_loading.get_file_profile(p_static_id => p_static),
-           p_max_rows => 100));
-  
-prompt .  EMP_UI_REPORT_MAIN
-create or replace view emp_ui_report_main as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       emp_email,
-       emp_phone_number,
-       job_title emp_job_name,
-       coalesce(dep_name, 'Zusatz: Ohne Abteilung') emp_dep_name
-  from hr_employees emp
-  join hr_jobs job on emp_job_id = job_id
-  left join hr_departments dep on emp_dep_id = dep_id;
-  
-prompt . EMP_UI_FACET
-create or replace view emp_ui_facet as
-select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, job_title emp_job_title,
-       emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id, dep_name emp_department,
-       case when emp_commission_pct is null then 0 else 1 end emp_is_commission_eligible,
-       (select count(*) 
-         from dual 
-        where exists(
-              select null 
-                from hr_employees m 
-               where m.emp_mgr_id = e.emp_id)) emp_is_manager
-  from hr_employees e
-  join hr_jobs
-    on emp_job_id = job_id
-  join hr_departments
-    on emp_dep_id = dep_id;
- 
-prompt .  EMP_UI_HOME_ALERTS
-create or replace view emp_ui_home_alerts as
-select case when emp_salary = job_min_salary then 'warning' else 'success' end alert_type,
-       case when emp_salary = job_min_salary then 'Gehalt am Minimum' else 'Gehalt am Maximum' end alert_title,
-       emp_first_name || ' ' || emp_last_name || ', ' || job_title alert_desc,
-       case when emp_salary = job_min_salary then 'Gehaltssteigerung prüfen' else 'Beförderung prüfen' end alert_action
-  from hr_employees
-  join hr_jobs
-    on emp_job_id = job_id
- where emp_salary > job_max_salary - (job_max_salary * 0.05)
-    or emp_salary = job_min_salary;
- 
-prompt .  EMP_UI_HOME_BADGES
-create or replace view emp_ui_home_badges as
-with data as(
-       select initcap(substr(job_id, 4)) job_title
-         from hr_employees
-         join hr_jobs
-           on emp_job_id = job_id)
-select account, department_manager, assistant, president, vice_president, programmer, representative, clerk, manager
-  from data
- pivot (
-       count(*) for job_title in (
-         'Account' account, 
-         'Mgr' department_manager, 
-         'Asst' assistant, 
-         'Pres' president, 
-         'Vp'vice_president, 
-         'Prog' programmer, 
-         'Rep' representative, 
-         'Clerk' clerk, 
-         'Man' manager));
- 
-prompt .  EMP_UI_HOME_CHART
-create or replace view emp_ui_home_chart as
-select count(emp_id) emp_amount, cou_id, cou_name
-  from hr_employees
-  join hr_departments on emp_dep_id = dep_id
-  join hr_locations on dep_loc_id = loc_id 
-  join hr_countries on loc_cou_id = cou_id
- group by cou_id, cou_name;
-
-prompt .  EMP_UI_HOME_COUNT
-create or replace view emp_ui_home_count as
-select cou_name, count (distinct l.loc_id) loc_amount, count(distinct d.dep_id) dep_amount, count(e.emp_id) emp_amount
-  from hr_countries c
-  join hr_locations l on c.cou_id = l.loc_cou_id
-  join hr_departments d on l.loc_id = d.dep_loc_id
-  join hr_employees e on d.dep_id = e.emp_dep_id
- group by cou_name
- order by emp_amount desc;
- 
-prompt .  EMP_UI_LOV_DEPARTMENTS
-create or replace view emp_ui_lov_departments as
-select dep.dep_name display_name, dep.dep_id return_value, 
-       case when emp.emp_dep_id is not null then 1 else 0 end dep_has_employee
-  from hr_departments dep
-  left join (
-       select dep_id emp_dep_id
-         from hr_departments d
-        where exists (
-              select 1
-                from hr_employees e
-               where e.emp_dep_id = d.dep_id))emp
-    on dep.dep_id = emp.emp_dep_id;
-
-prompt .  EMP_UI_LOV_EMPLOYEES
-create or replace view emp_ui_lov_employees as
-select emp.emp_last_name || ', ' || emp.emp_first_name display_name, emp.emp_id return_value,
-       case when mgr.emp_id is not null then 1 else 0 end emp_is_manager
-  from hr_employees emp
-  left join
-       (select emp_id
-          from hr_employees m
-         where exists(
-               select 1
-                 from hr_employees e
-                where e.emp_mgr_id = m.emp_id)) mgr
-    on emp.emp_id = mgr.emp_id;
- 
-prompt .  EMP_UI_LOV_JOBS
-create or replace view emp_ui_lov_jobs as
-select job_title display_name, job_id return_value
-  from hr_jobs;
-    
-prompt .  EMP_UI_LOV_SALARY_RANGES
-create or replace view emp_ui_lov_salary_ranges as
-with data as(
-       select emp_salary, ntile(5) over (order by emp_salary) emp_salary_range
-         from hr_employees)
-select to_char(min(emp_salary), 'fm999G990') || ' - ' || to_char(coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)), 'fm999G990') range_display, 
-       min(emp_salary) || '|' || coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)) range
-  from data
- group by emp_salary_range;
- 
-prompt .  EMP_UI_LOV_COUNTRIES
-create or replace view emp_ui_lov_countries as
-select cou_name display_name, cou_id return_value
-  from hr_countries;
- 
-prompt .  EMP_UI_REPORT_MAIN
-create or replace view emp_ui_report_main as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       emp_email,
-       emp_phone_number,
-       job_title emp_job_name,
-       coalesce(dep_name, 'Zusatz: Ohne Abteilung') emp_dep_name
-  from hr_employees emp
-  join hr_jobs job on emp_job_id = job_id
-  left join hr_departments dep on emp_dep_id = dep_id;
- 
-prompt .  EMP_UI_SEARCH_RESULT
-create or replace view emp_ui_search_result as
-select emp_dep_id,
-       apex_page.get_url(
-         p_page => 'EMP_EDIT',
-         p_items => 'P5_EMP_ID',
-         p_values => emp_id) search_link,
-       emp_last_name || ', ' || emp_first_name search_title,
-       job_title || ', ' || dep_name search_desc,
-       'Einstelldatum' label_01,
-       to_char(emp_hire_date, 'dd.mm.yyyy') value_01,
-       case when emp_commission_pct is not null then 'Boni' end label_02,
-       (emp_commission_pct * 100) || '%' value_02,
-       null label_03,
-       null value_03
-  from hr_employees
-  join hr_jobs on emp_job_id = job_id
-  join hr_departments
-    on emp_dep_id = dep_id;
-  
-prompt .  EMP_UI_LOC_ADMIN
-create or replace view emp_ui_loc_admin as
-select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, 
-       cou_name loc_country_name
-  from hr_locations
-  join hr_countries
-    on loc_cou_id = cou_id;
-    
-prompt . EMP_UI_LOC_EDIT
-create or replace view emp_ui_loc_edit as
-select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, loc_cou_id, loc_geometry
-  from hr_locations;
-
-prompt . EMP_UI_LOC_ADMIN_CARDS
-create or replace view emp_ui_loc_admin_cards as
-select loc_id, 
-       cou_name || ', ' || loc_city loc_headline,
-       loc_street_address,
-       loc_postal_code || ' ' || loc_city loc_address,
-       loc_department_list,
-       coalesce(to_char(l.loc_geometry.sdo_point.x, '9990.999999'), '0.0') loc_longitude,
-       coalesce(to_char(l.loc_geometry.sdo_point.y, '9990.999999'), '0.0') loc_latitude
-  from hr_locations l
-  join hr_countries
-    on loc_cou_id = cou_id
-  join (
-       select dep_loc_id, listagg(dep_name, ',') within group (order by dep_name) loc_department_list
-         from hr_departments
-        group by dep_loc_id)
-    on loc_id = dep_loc_id;
-    
-
-create or replace view emp_ui_emp_edit as
-select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number,emp_hire_date,
-       emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
-  from hr_employees;
-    
-    
-create or replace package emp_ui
+create or replace package bl_dep
   authid definer
 as
-  subtype flag_type is char(1 byte);
-  
-  function c_true
-    return flag_type;
-    
-  function c_false
-    return flag_type;
+  procedure merge_department(
+    p_row in out nocopy hr_departments%rowtype);
 
-  function check_email_is_unique(
-    p_emp_id in varchar2,
-    p_emp_email in varchar2)
-  return flag_type;
+  procedure delete_department(
+    p_row in hr_departments%rowtype);
 
-  function job_is_commission_eligible(
-    p_job_id in varchar2)
-    return flag_type;
-  
-  procedure process_emp_edit(
-    p_emp_id in varchar2,
-    p_emp_first_name in varchar2,
-    p_emp_last_name in varchar2,
-    p_emp_email in varchar2,
-    p_emp_phone_number in varchar2,
-    p_emp_hire_date in varchar2,
-    p_emp_job_id in varchar2,
-    p_emp_salary in varchar2,
-    p_emp_commission_pct in varchar2,
-    p_emp_mgr_id in varchar2,
-    p_emp_dep_id in varchar2);
-    
-end emp_ui;
+  procedure validate_department(
+    p_row in hr_departments%rowtype);
+
+end bl_dep;
 /
 
-   
-    
-create or replace package body emp_ui
+create or replace package body bl_dep
 as
 
-  function c_true
-    return flag_type
+  procedure merge_department(
+    p_row in out nocopy hr_departments%rowtype)
   as
   begin
-    return 'Y';
-  end c_true;
-  
-  
-  function c_false
-    return flag_type
-  as
-  begin
-    return 'N';
-  end c_false;
-  
+    validate_department(p_row);
 
-  function check_email_is_unique(
-    p_emp_id in varchar2,
-    p_emp_email in varchar2)
-  return flag_type
-  as
-   l_email_found flag_type;
-  begin
-    select case count(*) when 1 then emp_ui.c_true else emp_ui.c_false end
-      into l_email_found
-      from hr_employees 
-     where emp_email = p_emp_email
-       and emp_id != p_emp_id;
-       
-    return l_email_found;
-  end check_email_is_unique;
-  
-       
-  function job_is_commission_eligible(
-    p_job_id in varchar2)
-    return flag_type
-  as
-    l_job_is_commission_eligible hr_jobs.job_is_commission_eligible%type;
-  begin
-    select job_is_commission_eligible
-      into l_job_is_commission_eligible
-      from hr_jobs
-     where job_id = p_job_id;
-    
-    return l_job_is_commission_eligible;
-  exception
-    when NO_DATA_FOUND then
-      return c_false;
-  end job_is_commission_eligible;
-  
+    -- Initialisierung
+    p_row.dep_id := coalesce(p_row.dep_id, hr_departments_seq.nextval);
 
-  procedure process_emp_edit(
-    p_emp_id in varchar2,
-    p_emp_first_name in varchar2,
-    p_emp_last_name in varchar2,
-    p_emp_email in varchar2,
-    p_emp_phone_number in varchar2,
-    p_emp_hire_date in varchar2,
-    p_emp_job_id in varchar2,
-    p_emp_salary in varchar2,
-    p_emp_commission_pct in varchar2,
-    p_emp_mgr_id in varchar2,
-    p_emp_dep_id in varchar2)
+    merge into hr_departments t
+    using (select p_row.dep_id dep_id,
+                  p_row.dep_name dep_name,
+                  p_row.dep_loc_id dep_loc_id
+             from dual) s
+       on (t.dep_id = s.dep_id)
+     when matched then update set
+       t.dep_name = s.dep_name,
+       t.dep_loc_id = s.dep_loc_id
+     when not matched then insert (
+            dep_id, dep_name, dep_loc_id)
+          values(
+            s.dep_id, s.dep_name, s.dep_loc_id);
+  end merge_department;
+
+
+  procedure delete_department(
+    p_row in hr_departments%rowtype)
   as
-    l_row hr_employees%rowtype;
   begin
-    -- Daten typsicher umkopieren
-    l_row.emp_id := to_number(p_emp_id);
-    l_row.emp_first_name := p_emp_first_name;
-    l_row.emp_last_name := p_emp_last_name;
-    l_row.emp_email := upper(trim(p_emp_email));
-    l_row.emp_phone_number := p_emp_phone_number;
-    l_row.emp_hire_date := to_date(p_emp_hire_date, 'dd.mm.yyyy');
-    l_row.emp_job_id := p_emp_job_id;
-    l_row.emp_salary := to_number(p_emp_salary, '999999999D99');
-    l_row.emp_commission_pct := to_number(p_emp_commission_pct, '99D99');
-    l_row.emp_mgr_id := to_number(p_emp_mgr_id);
-    l_row.emp_dep_id := p_emp_dep_id;
-    
-    if v('APEX$ROW_STATUS') = 'D' then
-      bl_emp.delete_employee(l_row);
-    else
-      bl_emp.merge_employee(l_row);
-    end if; 
-    
-  end process_emp_edit;
-    
-end emp_ui;
+    delete from hr_departments
+     where dep_id = p_row.dep_id;
+  end delete_department;
+
+
+  procedure validate_department(
+    p_row in hr_departments%rowtype)
+  as
+  begin
+    null;
+  end validate_department;
+
+end bl_dep;
 /
+
+  
+prompt * Benutzerrechte an &LC_APEX. erteilen
+
+grant select on hr_employees to &LC_APEX. with grant option;
+grant select on hr_departments to &LC_APEX. with grant option;
+grant select on hr_jobs to &LC_APEX. with grant option;
+grant select on hr_locations to &LC_APEX. with grant option;
+grant select on hr_countries to &LC_APEX. with grant option;
+grant select on hr_regions to &LC_APEX. with grant option;
+
+grant select on hr_emp_details to &LC_APEX.;
+
+grant execute on bl_emp to &LC_APEX.;
+grant execute on bl_dep to &LC_APEX.;
+
+
+prompt * Benutzerrechte an &LC_REST. erteilen
+
+grant select on hr_employees to &LC_REST. with grant option;
+grant select on hr_departments to &LC_REST. with grant option;
+grant select on hr_jobs to &LC_REST. with grant option;
+grant select on hr_locations to &LC_REST. with grant option;
+grant select on hr_countries to &LC_REST. with grant option;
+grant select on hr_regions to &LC_REST. with grant option;
+
+grant select on hr_emp_details to &LC_REST.;
+
+grant execute on bl_emp to &LC_REST.;
+grant execute on bl_dep to &LC_REST.;
