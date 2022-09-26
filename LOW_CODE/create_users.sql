@@ -1,6 +1,7 @@
 define LC_DATA = BUCH_LC_DATA
 define LC_APEX = BUCH_LC_APEX
 define LC_REST = BUCH_LC_REST
+define LC_UTILS = BUCH_LC_UTILS
 define PWD = "Start!234"
 
 prompt * Extend role RESOURCE with CREATE VIEW, MATERIALIZED VIEW and SYNONYM
@@ -45,8 +46,18 @@ create user &LC_REST. identified by &PWD. default tablespace users quota unlimit
 
 grant connect, resource to &LC_REST.;
 
+prompt . User &LC_UTILS.
+
+create user &LC_UTILS. identified by &PWD. default tablespace users quota unlimited on users;
+
+grant resource, connect, create procedure, alter session to &LC_UTILS.;
 
 prompt * Install user objects
+
+prompt . User &LC_UTILS.
+alter session set current_schema=&LC_UTILS.;
+@install_buch_lc_utils.sql
+
 prompt . User &LC_DATA.
 alter session set current_schema=&LC_DATA.;
 @install_buch_lc_data.sql

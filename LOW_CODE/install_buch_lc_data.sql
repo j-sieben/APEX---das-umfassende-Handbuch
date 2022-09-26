@@ -603,7 +603,7 @@ grant select on hr_emp_details to &LC_APEX.;
 grant execute on bl_emp to &LC_APEX.;
 grant execute on bl_dep to &LC_APEX.;
 
-
+define LC_REST=buch_lc_rest
 prompt * Benutzerrechte an &LC_REST. erteilen
 
 grant select on hr_employees to &LC_REST. with grant option;
