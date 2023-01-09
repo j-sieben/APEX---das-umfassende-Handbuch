@@ -104,10 +104,10 @@ begin
   wwv_flow_fnd_user_api.create_fnd_user (
     p_user_id                      => '17504164753959332',
     p_user_name                    => 'BUCH_ADMIN',
-    p_first_name                   => 'Jürgen',
-    p_last_name                    => 'Sieben',
+    p_first_name                   => 'Max',
+    p_last_name                    => 'Mustermann',
     p_description                  => '',
-    p_email_address                => 'j.sieben@condes.de',
+    p_email_address                => 'admin@mail.de',
     p_web_password                 => 'DF1C15867E8ED8A91CBF29BDDF040CDF5A3801A98F7F8F4AC2C654F6B058E1125D68F73B5B3158BACFE2619450A9A45C893DB225F213FA3B697885469CF23DFA',
     p_web_password_format          => '5;5;10000',
     p_group_ids                    => '',
@@ -195,7 +195,7 @@ set verify on feedback on define on
 prompt  ...done
 
 
-prompt * Erzeuge Synonyme, falls erforderlich
+prompt * Create Synonyms if necessary
 declare
   cursor granted_objects_cur is
     select 'create or replace synonym ' || object_name || ' for ' || owner || '.' || object_name script
@@ -210,327 +210,9 @@ begin
 end;
 /
 
-prompt * Erstelle Views
-prompt . EMP_UI_DEPT_OVERVIEW_EMPLOYEES
-create or replace view emp_ui_dept_overview_employees as
-select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
-  from hr_employees;
-  
-  
-prompt . EMP_UI_DEPT_OVERVIEW_LOCATIONS
-create or replace view emp_ui_dept_overview_locations as
-select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, cou_name
-  from hr_locations
-  join hr_countries
-    on loc_cou_id = cou_id
- where exists(
-       select null
-         from hr_departments
-        where dep_loc_id = loc_id);
-  
-prompt . EMP_UI_DEPT_OVERVIEW_MASTER
-create or replace view emp_ui_dept_overview_master as
-select dep_id, dep_name, dep_mgr_id, dep_loc_id
-  from hr_departments;
-  
-  
-prompt .  EMP_UI_EMP_ADMIN_MAIN
-create or replace view emp_ui_emp_admin_main as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       emp_hire_date,
-       emp_salary,
-       job_title,
-       dep_id,
-       dep_name
-  from hr_employees
-  join hr_jobs on emp_job_id = job_id
-  left join hr_departments on emp_dep_id = dep_id;
-  
-prompt .  EMP_UI_EMP_ADMIN_MAIN_ICON
-create or replace view emp_ui_emp_admin_main_icon as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       job_title,
-       dep_id,
-       dep_name,
-       case (select count(*) is_manager
-         from dual
-        where exists(
-              select null
-                from hr_employees m
-               where m.emp_mgr_id = e.emp_id)) when 1 then 'fa-check' else 'fa-times' end is_manager,
-       coalesce(loc_city || ', ' || loc_street_address, 'ohne Abteilung') emp_last_name_title
-  from hr_employees e
-  join hr_jobs on emp_job_id = job_id
-  left join hr_departments on emp_dep_id = dep_id
-  left join hr_locations on dep_loc_id = loc_id;
-  
-prompt . EMP_UI_EMP_LOAD_EXCEPTIONS
-create or replace view emp_ui_emp_load_exceptions as
-select n001 row_pointer, substr(c001, 12) error_message
-  from apex_collections
- where collection_name = 'HR_EMPLOYEES_EXCEPTIONS';
-  
-prompt . EMP_UI_EMP_LOAD_EMAIN
-create or replace view emp_ui_emp_load_main as
-with params as (
-       select /*+ no_merge */ v('P2_FILE') p_file,
-              v('P2_XLSX_WORKSHEET') p_xsls_worksheet,
-              'Mitarbeiterliste' p_static
-         from dual)
-select line_number,
-       col001, col002, col003, col004, col005, col006, col007, col008, col009, col010
-       -- add more columns (col011 to col300) here.
-  from apex_application_temp_files
-  join params p
-    on name = p_file
- cross join table( 
-         apex_data_parser.parse(
-           p_content => blob_content,
-           p_file_name => filename,
-           p_xlsx_sheet_name => case when p_xsls_worksheet is not null then p_xsls_worksheet end,
-           p_file_profile => apex_data_loading.get_file_profile(p_static_id => p_static),
-           p_max_rows => 100));
-  
-prompt .  EMP_UI_REPORT_MAIN
-create or replace view emp_ui_report_main as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       emp_email,
-       emp_phone_number,
-       emp_salary,
-       job_title emp_job_name,
-       coalesce(dep_name, 'Zusatz: Ohne Abteilung') emp_dep_name
-  from hr_employees emp
-  join hr_jobs job on emp_job_id = job_id
-  left join hr_departments dep on emp_dep_id = dep_id;
-  
-prompt . EMP_UI_FACET
-create or replace view emp_ui_facet as
-select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, job_title emp_job_title,
-       emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id, dep_name emp_department,
-       case when emp_commission_pct is null then 0 else 1 end emp_is_commission_eligible,
-       (select count(*) 
-         from dual 
-        where exists(
-              select null 
-                from hr_employees m 
-               where m.emp_mgr_id = e.emp_id)) emp_is_manager
-  from hr_employees e
-  join hr_jobs
-    on emp_job_id = job_id
-  join hr_departments
-    on emp_dep_id = dep_id;
- 
-prompt .  EMP_UI_HOME_ALERTS
-create or replace view emp_ui_home_alerts as
-select case when emp_salary = job_min_salary then 'warning' else 'success' end alert_type,
-       case when emp_salary = job_min_salary then 'Gehalt am Minimum' else 'Gehalt am Maximum' end alert_title,
-       emp_first_name || ' ' || emp_last_name || ', ' || job_title alert_desc,
-       case when emp_salary = job_min_salary then 'Gehaltssteigerung prüfen' else 'Beförderung prüfen' end alert_action
-  from hr_employees
-  join hr_jobs
-    on emp_job_id = job_id
- where emp_salary > job_max_salary - (job_max_salary * 0.05)
-    or emp_salary = job_min_salary;
- 
-prompt .  EMP_UI_HOME_BADGES
-create or replace view emp_ui_home_badges as
-with data as(
-       select initcap(substr(job_id, 4)) job_title
-         from hr_employees
-         join hr_jobs
-           on emp_job_id = job_id)
-select account, department_manager, assistant, president, vice_president, programmer, representative, clerk, manager
-  from data
- pivot (
-       count(*) for job_title in (
-         'Account' account, 
-         'Mgr' department_manager, 
-         'Asst' assistant, 
-         'Pres' president, 
-         'Vp'vice_president, 
-         'Prog' programmer, 
-         'Rep' representative, 
-         'Clerk' clerk, 
-         'Man' manager));
- 
-prompt .  EMP_UI_HOME_CHART
-create or replace view emp_ui_home_chart as
-select count(emp_id) emp_amount, cou_id, cou_name
-  from hr_employees
-  join hr_departments on emp_dep_id = dep_id
-  join hr_locations on dep_loc_id = loc_id 
-  join hr_countries on loc_cou_id = cou_id
- group by cou_id, cou_name;
-
-prompt .  EMP_UI_HOME_COUNT
-create or replace view emp_ui_home_count as
-select cou_name, count (distinct l.loc_id) loc_amount, count(distinct d.dep_id) dep_amount, count(e.emp_id) emp_amount
-  from hr_countries c
-  join hr_locations l on c.cou_id = l.loc_cou_id
-  join hr_departments d on l.loc_id = d.dep_loc_id
-  join hr_employees e on d.dep_id = e.emp_dep_id
- group by cou_name
- order by emp_amount desc;
- 
-prompt .  EMP_UI_LOV_DEPARTMENTS
-create or replace view emp_ui_lov_departments as
-select dep.dep_name display_name, dep.dep_id return_value, 
-       case when emp.emp_dep_id is not null then 1 else 0 end dep_has_employee
-  from hr_departments dep
-  left join (
-       select dep_id emp_dep_id
-         from hr_departments d
-        where exists (
-              select 1
-                from hr_employees e
-               where e.emp_dep_id = d.dep_id))emp
-    on dep.dep_id = emp.emp_dep_id;
-
-prompt .  EMP_UI_LOV_EMPLOYEES
-create or replace view emp_ui_lov_employees as
-select emp.emp_last_name || ', ' || emp.emp_first_name display_name, emp.emp_id return_value,
-       case when mgr.emp_id is not null then 1 else 0 end emp_is_manager
-  from hr_employees emp
-  left join
-       (select emp_id
-          from hr_employees m
-         where exists(
-               select 1
-                 from hr_employees e
-                where e.emp_mgr_id = m.emp_id)) mgr
-    on emp.emp_id = mgr.emp_id;
- 
-prompt .  EMP_UI_LOV_JOBS
-create or replace view emp_ui_lov_jobs as
-select job_title display_name, job_id return_value
-  from hr_jobs;
-    
-prompt .  EMP_UI_LOV_SALARY_RANGES
-create or replace view emp_ui_lov_salary_ranges as
-with data as(
-       select emp_salary, ntile(5) over (order by emp_salary) emp_salary_range
-         from hr_employees)
-select to_char(min(emp_salary), 'fm999G990') || ' - ' || to_char(coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)), 'fm999G990') range_display, 
-       min(emp_salary) || '|' || coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)) range
-  from data
- group by emp_salary_range;
- 
-prompt .  EMP_UI_LOV_COUNTRIES
-create or replace view emp_ui_lov_countries as
-select cou_name display_name, cou_id return_value
-  from hr_countries;
- 
-prompt .  EMP_UI_LOV_LOCATIONS
-create or replace view emp_ui_lov_locations as
-select loc_city display_name, loc_id return_value, cou_name country
-  from hr_locations
-  join hr_countries
-    on loc_cou_id = cou_id;
- 
-prompt .  EMP_UI_REPORT_MAIN
-create or replace view emp_ui_report_main as
-select emp_id,
-       emp_first_name,
-       emp_last_name,
-       emp_email,
-       emp_phone_number,
-       job_title emp_job_name,
-       coalesce(dep_name, 'Zusatz: Ohne Abteilung') emp_dep_name
-  from hr_employees emp
-  join hr_jobs job on emp_job_id = job_id
-  left join hr_departments dep on emp_dep_id = dep_id;
- 
-prompt .  EMP_UI_SEARCH_RESULT
-create or replace view emp_ui_search_result as
-select emp_dep_id,
-       apex_page.get_url(
-         p_page => 'EMP_EDIT',
-         p_items => 'P5_EMP_ID',
-         p_values => emp_id) search_link,
-       emp_last_name || ', ' || emp_first_name search_title,
-       job_title || ', ' || dep_name search_desc,
-       'Einstelldatum' label_01,
-       to_char(emp_hire_date, 'dd.mm.yyyy') value_01,
-       case when emp_commission_pct is not null then 'Boni' end label_02,
-       (emp_commission_pct * 100) || '%' value_02,
-       null label_03,
-       null value_03
-  from hr_employees
-  join hr_jobs on emp_job_id = job_id
-  join hr_departments
-    on emp_dep_id = dep_id;
-  
-prompt .  EMP_UI_LOC_ADMIN
-create or replace view emp_ui_loc_admin as
-select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, 
-       cou_name loc_country_name
-  from hr_locations
-  join hr_countries
-    on loc_cou_id = cou_id;
-    
-prompt . EMP_UI_LOC_EDIT
-create or replace view emp_ui_loc_edit as
-select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, loc_cou_id, loc_geometry
-  from hr_locations;
-
-prompt . EMP_UI_LOC_ADMIN_CARDS
-create or replace view emp_ui_loc_admin_cards as
-select loc_id, 
-       cou_name || ', ' || loc_city loc_headline,
-       loc_street_address,
-       loc_postal_code || ' ' || loc_city loc_address,
-       loc_department_list,
-       coalesce(to_char(l.loc_geometry.sdo_point.x, '9990.999999'), '0.0') loc_longitude,
-       coalesce(to_char(l.loc_geometry.sdo_point.y, '9990.999999'), '0.0') loc_latitude
-  from hr_locations l
-  join hr_countries
-    on loc_cou_id = cou_id
-  join (
-       select dep_loc_id, listagg(dep_name, ',') within group (order by dep_name) loc_department_list
-         from hr_departments
-        group by dep_loc_id)
-    on loc_id = dep_loc_id;
-    
-
-prompt . EMP_UI_EMP_EDIT
-create or replace view emp_ui_emp_edit as
-select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number,emp_hire_date,
-       emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
-  from hr_employees;
-  
-  
-prompt . EMP_UI_DEP_EMP_STEP1
-create or replace view emp_ui_dep_emp_step1 as
-select dep_id, dep_name, dep_loc_id
-  from hr_departments;
-  
-  
-prompt . EMP_UI_DEP_EMP_STEP2
-create or replace view emp_ui_dep_emp_step2 as
-select seq_id,
-       n001 emp_id,
-       c001 emp_first_name,
-       c002 emp_last_name,
-       c003 emp_email,
-       c004 emp_phone_number,
-       d001 emp_hire_date,
-       c005 emp_job_id,
-       n002 emp_salary,
-       n003 emp_commission_pct,
-       n004 emp_mgr_id,
-       n005 emp_dep_id
-  from apex_collections
- where collection_name = 'EMP_UI_DEP_EMP_STEP2';  
-
- 
+prompt * Create Views 
 prompt . BL_EMP_COLL_DELTA_VIEW
-create or replace view bl_emp_coll_delta_view as
+create or replace force view bl_emp_coll_delta_view as
 select coalesce(c.emp_id, e.emp_id) emp_id, c.emp_first_name, c.emp_last_name, c.emp_email,
        c.emp_phone_number, c.emp_hire_date, c.emp_job_id, c.emp_salary, c.emp_commission_pct,
        c.emp_mgr_id, c.emp_dep_id,
@@ -552,9 +234,31 @@ select coalesce(c.emp_id, e.emp_id) emp_id, c.emp_first_name, c.emp_last_name, c
        decode(e.emp_commission_pct, c.emp_commission_pct, 0, 1) +
        decode(e.emp_mgr_id, c.emp_mgr_id, 0, 1) +
        decode(e.emp_dep_id, c.emp_dep_id, 0, 1) > 0;
+prompt . EMP_UI_DEP_EMP_STEP1
+create or replace force view emp_ui_dep_emp_step1 as
+select dep_id, dep_name, dep_loc_id
+  from hr_departments;
+  
+  
+prompt . EMP_UI_DEP_EMP_STEP2
+create or replace force view emp_ui_dep_emp_step2 as
+select seq_id,
+       n001 emp_id,
+       c001 emp_first_name,
+       c002 emp_last_name,
+       c003 emp_email,
+       c004 emp_phone_number,
+       d001 emp_hire_date,
+       c005 emp_job_id,
+       n002 emp_salary,
+       n003 emp_commission_pct,
+       n004 emp_mgr_id,
+       n005 emp_dep_id
+  from apex_collections
+ where collection_name = 'EMP_UI_DEP_EMP_STEP2';  
  
 prompt . EMP_UI_DEP_EMP_STEP3_DEPT
-create or replace view emp_ui_dep_emp_step3_dept as
+create or replace force view emp_ui_dep_emp_step3_dept as
 with session_state as (
        select /*+ no_merge */ 
               v('P9_DEP_NAME') dep_name,
@@ -568,7 +272,7 @@ select dep_name department, loc_city city, cou_name country
     on loc_cou_id = cou_id;
   
 prompt . EMP_UI_DEP_EMP_STEP3_EMP
-create or replace view emp_ui_dep_emp_step3_emp as
+create or replace force view emp_ui_dep_emp_step3_emp as
 select emp_id, emp_first_name, emp_last_name, emp_email,
        emp_phone_number, emp_job_id, emp_salary,
        case dml_action 
@@ -576,9 +280,306 @@ select emp_id, emp_first_name, emp_last_name, emp_email,
          when emp_ui.c_delete then 'fa-minus-square-o u-danger-text'
          else 'fa-edit u-info-text' end dml_action
   from bl_emp_coll_delta_view;
- 
+  
+prompt . EMP_UI_DEPT_OVERVIEW_EMPLOYEES
+create or replace force view emp_ui_dept_overview_employees as
+select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
+  from hr_employees;
+  
+  
+prompt . EMP_UI_DEPT_OVERVIEW_LOCATIONS
+create or replace force view emp_ui_dept_overview_locations as
+select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, cou_name
+  from hr_locations
+  join hr_countries
+    on loc_cou_id = cou_id
+ where exists(
+       select null
+         from hr_departments
+        where dep_loc_id = loc_id);
+  
+prompt . EMP_UI_DEPT_OVERVIEW_MASTER
+create or replace force view emp_ui_dept_overview_master as
+select dep_id, dep_name, dep_mgr_id, dep_loc_id
+  from hr_departments;
+  
+  
+prompt .  EMP_UI_EMP_ADMIN_MAIN
+create or replace force view emp_ui_emp_admin_main as
+select emp_id,
+       emp_first_name,
+       emp_last_name,
+       emp_hire_date,
+       emp_salary,
+       job_title,
+       dep_id,
+       dep_name
+  from hr_employees
+  join hr_jobs on emp_job_id = job_id
+  left join hr_departments on emp_dep_id = dep_id;
+  
+prompt .  EMP_UI_EMP_ADMIN_MAIN_ICON
+create or replace force view emp_ui_emp_admin_main_icon as
+select emp_id,
+       emp_first_name,
+       emp_last_name,
+       job_title,
+       dep_id,
+       dep_name,
+       case (select count(*) is_manager
+         from dual
+        where exists(
+              select null
+                from hr_employees m
+               where m.emp_mgr_id = e.emp_id)) when 1 then 'fa-check' else 'fa-times' end is_manager,
+       coalesce(loc_city || ', ' || loc_street_address, 'ohne Abteilung') emp_last_name_title
+  from hr_employees e
+  join hr_jobs on emp_job_id = job_id
+  left join hr_departments on emp_dep_id = dep_id
+  left join hr_locations on dep_loc_id = loc_id;
     
-prompt * Erstelle Packages
+prompt . EMP_UI_EMP_EDIT
+create or replace force view emp_ui_emp_edit as
+select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number,emp_hire_date,
+       emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id
+  from hr_employees;
+  
+prompt . EMP_UI_EMP_LOAD_EXCEPTIONS
+create or replace force view emp_ui_emp_load_exceptions as
+select n001 row_pointer, substr(c001, 12) error_message
+  from apex_collections
+ where collection_name = 'HR_EMPLOYEES_EXCEPTIONS';
+  
+prompt . EMP_UI_EMP_LOAD_MAIN
+create or replace force view emp_ui_emp_load_main as
+with params as (
+       select /*+ no_merge */ 
+              v('P2_FILE') p_file,
+              v('P2_XLSX_WORKSHEET') p_xsls_worksheet,
+              'Mitarbeiterliste' p_static
+         from dual)
+select line_number,
+       col001, col002, col003, col004, col005, col006, col007, col008, col009, col010
+       -- add more columns (col011 to col300) here.
+  from apex_application_temp_files
+  join params p
+    on name = p_file
+ cross join table( 
+         apex_data_parser.parse(
+           p_content => blob_content,
+           p_file_name => filename,
+           p_xlsx_sheet_name => case when p_xsls_worksheet is not null then p_xsls_worksheet end,
+           p_file_profile => apex_data_loading.get_file_profile(p_static_id => p_static),
+           p_max_rows => 100));
+  
+prompt . EMP_UI_FACET
+create or replace force view emp_ui_facet as
+select emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, job_title emp_job_title,
+       emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id, dep_name emp_department,
+       case when emp_commission_pct is null then 0 else 1 end emp_is_commission_eligible,
+       (select count(*) 
+         from dual 
+        where exists(
+              select null 
+                from hr_employees m 
+               where m.emp_mgr_id = e.emp_id)) emp_is_manager
+  from hr_employees e
+  join hr_jobs
+    on emp_job_id = job_id
+  join hr_departments
+    on emp_dep_id = dep_id;
+ 
+prompt .  EMP_UI_HOME_ALERTS
+create or replace force view emp_ui_home_alerts as
+select case when emp_salary = job_min_salary then 'warning' else 'success' end alert_type,
+       case when emp_salary = job_min_salary then 'Gehalt am Minimum' else 'Gehalt am Maximum' end alert_title,
+       emp_first_name || ' ' || emp_last_name || ', ' || job_title alert_desc,
+       case when emp_salary = job_min_salary then 'Gehaltssteigerung prüfen' else 'Beförderung prüfen' end alert_action
+  from hr_employees
+  join hr_jobs
+    on emp_job_id = job_id
+ where emp_salary > job_max_salary - (job_max_salary * 0.05)
+    or emp_salary = job_min_salary;
+ 
+prompt .  EMP_UI_HOME_BADGES
+create or replace force view emp_ui_home_badges as
+with data as(
+       select initcap(substr(job_id, 4)) job_title
+         from hr_employees
+         join hr_jobs
+           on emp_job_id = job_id)
+select account, department_manager, assistant, president, vice_president, programmer, representative, clerk, manager
+  from data
+ pivot (
+       count(*) for job_title in (
+         'Account' account, 
+         'Mgr' department_manager, 
+         'Asst' assistant, 
+         'Pres' president, 
+         'Vp'vice_president, 
+         'Prog' programmer, 
+         'Rep' representative, 
+         'Clerk' clerk, 
+         'Man' manager));
+ 
+prompt .  EMP_UI_HOME_CHART
+create or replace force view emp_ui_home_chart as
+select count(emp_id) emp_amount, cou_id, cou_name
+  from hr_employees
+  join hr_departments on emp_dep_id = dep_id
+  join hr_locations on dep_loc_id = loc_id 
+  join hr_countries on loc_cou_id = cou_id
+ group by cou_id, cou_name;
+
+prompt .  EMP_UI_HOME_COUNT
+create or replace force view emp_ui_home_count as
+select cou_name, count (distinct l.loc_id) loc_amount, count(distinct d.dep_id) dep_amount, count(e.emp_id) emp_amount
+  from hr_countries c
+  join hr_locations l on c.cou_id = l.loc_cou_id
+  join hr_departments d on l.loc_id = d.dep_loc_id
+  join hr_employees e on d.dep_id = e.emp_dep_id
+ group by cou_name
+ order by emp_amount desc;
+  
+prompt .  EMP_UI_LOC_ADMIN
+create or replace force view emp_ui_loc_admin as
+select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, 
+       cou_name loc_country_name
+  from hr_locations
+  join hr_countries
+    on loc_cou_id = cou_id;
+
+prompt . EMP_UI_LOC_ADMIN_CARDS
+create or replace force view emp_ui_loc_admin_cards as
+select loc_id, 
+       cou_name || ', ' || loc_city loc_headline,
+       loc_street_address,
+       loc_postal_code || ' ' || loc_city loc_address,
+       loc_department_list,
+       coalesce(to_char(l.loc_geometry.sdo_point.x, '9990.999999'), '0.0') loc_longitude,
+       coalesce(to_char(l.loc_geometry.sdo_point.y, '9990.999999'), '0.0') loc_latitude
+  from hr_locations l
+  join hr_countries
+    on loc_cou_id = cou_id
+  join (
+       select dep_loc_id, listagg(dep_name, ',') within group (order by dep_name) loc_department_list
+         from hr_departments
+        group by dep_loc_id)
+    on loc_id = dep_loc_id;
+    
+prompt . EMP_UI_LOC_EDIT
+create or replace force view emp_ui_loc_edit as
+select loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, loc_cou_id, loc_geometry
+  from hr_locations;
+ 
+prompt .  EMP_UI_LOV_COUNTRIES
+create or replace force view emp_ui_lov_countries as
+select cou_name display_name, cou_id return_value
+  from hr_countries;
+ 
+prompt .  EMP_UI_LOV_DEPARTMENTS
+create or replace force view emp_ui_lov_departments as
+select dep.dep_name display_name, dep.dep_id return_value, 
+       case when emp.emp_dep_id is not null then 1 else 0 end dep_has_employee
+  from hr_departments dep
+  left join (
+       select dep_id emp_dep_id
+         from hr_departments d
+        where exists (
+              select 1
+                from hr_employees e
+               where e.emp_dep_id = d.dep_id))emp
+    on dep.dep_id = emp.emp_dep_id;
+
+prompt .  EMP_UI_LOV_EMPLOYEES
+create or replace force view emp_ui_lov_employees as
+select emp.emp_last_name || ', ' || emp.emp_first_name display_name, emp.emp_id return_value,
+       case when mgr.emp_id is not null then 1 else 0 end emp_is_manager
+  from hr_employees emp
+  left join
+       (select emp_id
+          from hr_employees m
+         where exists(
+               select 1
+                 from hr_employees e
+                where e.emp_mgr_id = m.emp_id)) mgr
+    on emp.emp_id = mgr.emp_id;
+ 
+prompt .  EMP_UI_LOV_JOBS
+create or replace force view emp_ui_lov_jobs as
+select job_title display_name, job_id return_value
+  from hr_jobs;
+ 
+prompt .  EMP_UI_LOV_LOCATIONS
+create or replace force view emp_ui_lov_locations as
+select loc_city display_name, loc_id return_value, cou_name country
+  from hr_locations
+  join hr_countries
+    on loc_cou_id = cou_id;
+    
+prompt .  EMP_UI_LOV_SALARY_RANGES
+create or replace force view emp_ui_lov_salary_ranges as
+with data as(
+       select emp_salary, ntile(5) over (order by emp_salary) emp_salary_range
+         from hr_employees)
+select to_char(min(emp_salary), 'fm999G990') || ' - ' || to_char(coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)), 'fm999G990') range_display, 
+       min(emp_salary) || '|' || coalesce((lead(min(emp_salary)) over (order by min(emp_salary)) - 1), max(emp_salary)) range
+  from data
+ group by emp_salary_range;
+ 
+prompt .  EMP_UI_REPORT_MAIN
+create or replace force view emp_ui_report_main as
+select emp_id,
+       emp_first_name,
+       emp_last_name,
+       emp_email,
+       emp_phone_number,
+       job_title emp_job_name,
+       coalesce(dep_name, 'Zusatz: Ohne Abteilung') emp_dep_name
+  from hr_employees emp
+  join hr_jobs job on emp_job_id = job_id
+  left join hr_departments dep on emp_dep_id = dep_id;
+  
+prompt . EMP_UI_REPORT_TREE
+create or replace force view emp_ui_report_tree as
+ with jobs as (
+        select distinct emp_job_id job_id, emp_dep_id job_dep_id, job_title
+          from hr_jobs
+          join hr_employees
+            on job_id = emp_job_id)
+ select level lvl, child_id, parent_id, display_name
+   from (select to_char(dep_id) child_id, null parent_id, dep_name display_name
+           from hr_departments
+          union all
+         select job_id, to_char(job_dep_id), job_title
+           from jobs
+          union all
+         select to_char(emp_id), emp_job_id, emp_last_name
+           from hr_employees)
+  start with parent_id is null
+connect by prior child_id = parent_id;
+ 
+prompt .  EMP_UI_SEARCH_RESULT
+create or replace force view emp_ui_search_result as
+select emp_dep_id,
+       apex_page.get_url(
+         p_page => 'EMP_EDIT',
+         p_items => 'P5_EMP_ID',
+         p_values => emp_id) search_link,
+       emp_last_name || ', ' || emp_first_name search_title,
+       job_title || ', ' || dep_name search_desc,
+       'Einstelldatum' label_01,
+       to_char(emp_hire_date, 'dd.mm.yyyy') value_01,
+       case when emp_commission_pct is not null then 'Boni' end label_02,
+       (emp_commission_pct * 100) || '%' value_02,
+       null label_03,
+       null value_03
+  from hr_employees
+  join hr_jobs on emp_job_id = job_id
+  join hr_departments
+    on emp_dep_id = dep_id;
+    
+prompt * Create Packages
 prompt . EMP_UI
 create or replace package emp_ui
   authid definer

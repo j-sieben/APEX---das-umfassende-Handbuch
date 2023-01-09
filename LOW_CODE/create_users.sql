@@ -2,7 +2,8 @@ define LC_DATA = BUCH_LC_DATA
 define LC_APEX = BUCH_LC_APEX
 define LC_REST = BUCH_LC_REST
 define LC_UTILS = BUCH_LC_UTILS
-define PWD = "Start!234"
+define PWD = "Start!1234"
+define TABLESPACE = USERS
 
 prompt * Extend role RESOURCE with CREATE VIEW, MATERIALIZED VIEW and SYNONYM
 grant create view, create materialized view, create synonym to resource;
@@ -10,13 +11,13 @@ grant create view, create materialized view, create synonym to resource;
 prompt * Create users
 prompt . User &LC_DATA.
 
-create user &LC_DATA. identified by &PWD. default tablespace users quota unlimited on users;
+create user &LC_DATA. identified by &PWD. default tablespace &TABLESPACE. quota unlimited on &TABLESPACE.;
 
 grant connect, resource to &LC_DATA.;
 
 
 prompt . &LC_APEX.
-create user &LC_APEX. identified by &PWD.  default tablespace users quota unlimited on users;
+create user &LC_APEX. identified by &PWD.  default tablespace &TABLESPACE. quota unlimited on &TABLESPACE.;
 
 grant connect, resource to &LC_APEX.;
 
@@ -42,13 +43,13 @@ end;
 /
 
 prompt . User &LC_REST.
-create user &LC_REST. identified by &PWD. default tablespace users quota unlimited on users;
+create user &LC_REST. identified by &PWD. default tablespace &TABLESPACE. quota unlimited on &TABLESPACE.;
 
 grant connect, resource to &LC_REST.;
 
 prompt . User &LC_UTILS.
 
-create user &LC_UTILS. identified by &PWD. default tablespace users quota unlimited on users;
+create user &LC_UTILS. identified by &PWD. default tablespace &TABLESPACE. quota unlimited on &TABLESPACE.;
 
 grant resource, connect, create procedure, alter session to &LC_UTILS.;
 

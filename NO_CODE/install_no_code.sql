@@ -1,6 +1,7 @@
 
 set serveroutput on
 
+prompt ******  Cleaning up existing installation
 declare
    cursor delete_object_cur is
     select *
@@ -11,16 +12,16 @@ begin
   for obj in delete_object_cur loop
     begin
       execute immediate 'drop ' || obj.object_type || ' ' || obj.object_name || case obj.object_type when 'TABLE' then ' cascade constraints purge' end;
-      dbms_output.put_line(obj.object_type || ' ' || obj.object_name || ' geloescht');
+      dbms_output.put_line('.  ' || obj.object_type || ' ' || obj.object_name || ' deleted');
     exception
       when others then
-        dbms_output.put_line('Fehler bei ' || obj.object_type || ' ' || obj.object_name || ': ' || sqlerrm);
+        dbms_output.put_line('Error at ' || obj.object_type || ' ' || obj.object_name || ': ' || sqlerrm);
     end;
   end loop;
 end;
 /
 
-prompt --application/set_environment
+prompt ******  Application/set_environment
 set define off verify off feedback off
 whenever sqlerror exit sql.sqlcode rollback
 --------------------------------------------------------------------------------
@@ -39,7 +40,7 @@ begin
     p_default_workspace_id=>11369389751207829);
 end;
 /
-prompt  WORKSPACE 11369389751207829
+prompt  ******  WORKSPACE 11369389751207829
 --
 -- Workspace, User Group, User, and Team Development Export:
 --   Date and Time:   13:08 Sonntag August 28, 2022
@@ -63,7 +64,7 @@ end;
 -- W O R K S P A C E
 -- Creating a workspace will not create database schemas or objects.
 -- This API creates only the meta data for this APEX workspace
-prompt  Creating workspace BUCH_NO_CODE...
+prompt .  Creating workspace BUCH_NO_CODE...
 begin
   wwv_flow_fnd_user_api.create_company (
     p_id => 11369480404207837
@@ -94,7 +95,7 @@ end;
 ----------------
 -- G R O U P S
 --
-prompt  Creating Groups...
+prompt ******  Creating Groups...
 begin
   wwv_flow_fnd_user_api.create_user_group (
     p_id => 2400655054815034,
@@ -116,7 +117,7 @@ begin
 end;
 /
 
-prompt  Creating group grants...
+prompt ******  Creating group grants...
 ----------------
 -- U S E R S
 -- User repository for use with APEX cookie-based authentication.
@@ -194,7 +195,7 @@ begin
 end;
 /
 
-prompt Check Compatibility...
+prompt ******  Check Compatibility...
 begin
   -- This date identifies the minimum version required to import this file.
   wwv_flow_team_api.check_version(p_version_yyyy_mm_dd=>'2010.05.13');
@@ -209,7 +210,7 @@ end;
 /
 
 set verify on feedback on define on
-prompt  ...done
+prompt ...done
 
 
 Prompt ******  Creating HR_REGIONS table ....
@@ -234,8 +235,32 @@ create table hr_countries(
 
 
 
-Prompt ******  Creating hr_locations table ....
+prompt ******  Creating  sequences
+prompt .  HR_LOCATIONS_SEQ
+create sequence hr_locations_seq
+ start with     3300
+ increment by   100
+ maxvalue       9900
+ nocache
+ nocycle;
+ 
+prompt .  HR_DEPARTMENTS_SEQ
+create sequence hr_departments_seq
+ start with     280
+ increment by   10
+ maxvalue       9990
+ nocache
+ nocycle;
+ 
+prompt .  HR_EMPLOYEES_SEQ
+create sequence hr_employees_seq
+ start with     207
+ increment by   1
+ nocache
+ nocycle;
 
+prompt ******  Creating  tables
+prompt .  HR_LOCATIONS
 create table hr_locations(
   loc_id number(4),
   loc_street_address varchar2(40 char),
@@ -249,19 +274,7 @@ create table hr_locations(
     references hr_countries(cou_id) 
 ) organization index;
 
-create sequence hr_locations_seq
- start with     3300
- increment by   100
- maxvalue       9900
- nocache
- nocycle;
-
-REM ********************************************************************
-REM Create the hr_departments table to hold company department information.
-REM HR.hr_employees and HR.hr_job_history have a foreign key to this table.
-
-Prompt ******  Creating hr_departments table ....
-
+prompt .  HR_DEPARTMENTS
 create table hr_departments(
   dep_id number(4),
   dep_name varchar2(30 char) constraint dept_name_nn not null,
@@ -272,17 +285,7 @@ create table hr_departments(
     references hr_locations (loc_id)
 );
 
-
-create sequence hr_departments_seq
- start with     280
- increment by   10
- maxvalue       9990
- nocache
- nocycle;
-
-
-Prompt ******  Creating hr_jobs table ....
-
+prompt .  HR_JOBS
 create table hr_jobs(
   job_id varchar2(10 byte),
   job_title varchar2(35 char) constraint job_title_nn not null,
@@ -293,8 +296,7 @@ create table hr_jobs(
 )organization index;
 
 
-Prompt ******  Creating hr_employees table ....
-
+prompt .  HR_EMPLOYEES
 create table hr_employees(
   emp_id number(6),
   emp_first_name varchar2(20 char),
@@ -326,57 +328,41 @@ alter table hr_departments add (
 REM disable integrity constraint to hr_employees to load data
 alter table hr_departments disable constraint dep_mgr_id_fk;
 
-
-Rem 	Useful for any subsequent addition of rows to hr_employees table
-Rem 	Starts with 207 
-create sequence hr_employees_seq
- start with     207
- increment by   1
- nocache
- nocycle;
-
-Prompt ******  Creating HR_EMP_DETAILS view ...
-
-create or replace view hr_emp_details as
-select emp_id, job_id, emp_mgr_id, dep_id, loc_id, cou_id,
-       emp_first_name, emp_last_name, emp_salary, emp_commission_pct, dep_name,
-       job_title, substr(job_id, 4) job_group, loc_city, loc_state_province, cou_name, reg_name
-  from hr_employees
-  join hr_departments on emp_dep_id = dep_id
-  join hr_jobs on emp_job_id = job_id
-  join hr_locations on dep_loc_id = loc_id
-  join hr_countries on loc_cou_id = cou_id
-  join hr_regions on cou_reg_id = reg_id
-with read only;
-
-Prompt ******  Creating indexes ...
-
+prompt ******  Creating indexes
+prompt .  EMP_DEPARTMENT_IX
 create index emp_department_ix
        on hr_employees (emp_dep_id);
 
+prompt .  EMP_JOB_IX
 create index emp_job_ix
        on hr_employees (emp_job_id);
 
+prompt .  EMP_MANAGER_IX
 create index emp_manager_ix
        on hr_employees (emp_mgr_id);
 
+prompt .  EMP_NAME_IX
 create index emp_name_ix
        on hr_employees (emp_last_name, emp_first_name);
 
+prompt .  DEPT_LOCATION_IX
 create index dept_location_ix
        on hr_departments (dep_loc_id);
 
+prompt .  LOC_CITY_IX
 create index loc_city_ix
        on hr_locations (loc_city);
 
+prompt .  LOC_STATE_PROVINCE_IX
 create index loc_state_province_ix	
        on hr_locations (loc_state_province);
 
+prompt .  LOC_COUNTRY_IX
 create index loc_country_ix
        on hr_locations (loc_cou_id);
 
-Prompt ******  Populating HR_REGIONS table ....
-
+Prompt ******  Populating table values
+prompt .  HR_REGIONS
 insert into hr_regions(reg_id, reg_name)
 select 1 reg_id, 'Europe' reg_name from dual union all
 select 2, 'Americas' from dual union all
@@ -385,8 +371,7 @@ select 4, 'Middle East and Africa' from dual;
 
 commit;
 
-Prompt ******  Populating HT_COUNTRIES table ....
-
+prompt .  HT_COUNTRIES
 insert into hr_countries(cou_id, cou_name, cou_reg_id)
 select 'IT' cou_id, 'Italy' cou_name, 1 cou_reg_id  from dual union all
 select 'JP', 'Japan', 3  from dual union all
@@ -416,9 +401,7 @@ select 'BE', 'Belgium', 1  from dual;
 
 commit;
 
-
-Prompt ******  Populating HR_LOCATIONS table ....
-
+prompt .  HR_LOCATIONS
 insert into hr_locations(loc_id, loc_street_address, loc_postal_code, loc_city, loc_state_province, loc_cou_id)
 select 1000 loc_id, '1297 Via Cola di Rie' loc_street_address, '00989'loc_postal_code, 'Roma' loc_city, null loc_state_province, 'IT' loc_cou_id from dual union all
 select 1100, '93091 Calle della Testa', '10934', 'Venice', null, 'IT' from dual union all
@@ -446,9 +429,7 @@ select 3200, 'Mariano Escobedo 9991', '11932', 'Mexico City', 'Distrito Federal,
 
 commit;
 
-Prompt ******  Populating HR_DEPARTMENTS table ....
-
-
+prompt .  HR_DEPARTMENTS
 insert into hr_departments(dep_id, dep_name, dep_mgr_id, dep_loc_id)
 select 10 dep_id, 'Administration' dep_name, 200 dep_mgr_id, 1700 dep_loc_id from dual union all
 select 20, 'Marketing', 201, 1800 from dual union all
@@ -480,8 +461,7 @@ select 270, 'Payroll', null, 1700 from dual;
 
 commit;
 
-Prompt ******  Populating HR_JOBS table ....
-
+prompt .  HR_JOBS
 insert into hr_jobs(job_id, job_title, job_min_salary, job_max_salary, job_is_commission_eligible)
 select 'AD_PRES' job_id, 'President' job_title, 20080 job_min_salary, 40000 job_max_salary, 'N' job_is_commission_eligible from dual union all
 select 'AD_VP', 'Administration Vice President', 15000, 30000, 'N' from dual union all
@@ -505,7 +485,7 @@ select 'PR_REP', 'Public Relations Representative', 4500, 10500, 'N' from dual;
 
 commit;
 
-Prompt ******  Populating HR_EMPLOYEES table ....
+prompt .  HR_EMPLOYEES
 insert into hr_employees(emp_id, emp_first_name, emp_last_name, emp_email, emp_phone_number, emp_hire_date, emp_job_id, emp_salary, emp_commission_pct, emp_mgr_id, emp_dep_id)
 select 100 emp_id, 'Steven' emp_first_name, 'King' emp_last_name, 'SKING' emp_email, '515.123.4567' emp_phone_number, to_date('17.06.2003', 'dd.mm.yyyy') emp_hire_date, 'AD_PRES' emp_job_id, 24000 emp_salary, null emp_commission_pct, null emp_mgr_id, 90 emp_dep_id from dual union all
 select 101, 'Neena', 'Kochhar', 'NKOCHHAR', '515.123.4568', to_date('21.09.2005', 'dd.mm.yyyy'), 'AD_VP', 17000, null, 100, 90 from dual union all
@@ -617,11 +597,21 @@ select 206, 'William', 'Gietz', 'WGIETZ', '515.123.8181', to_date('07.06.2002', 
 
 commit;
 
-REM enable integrity constraint to hr_departments
-
 alter table hr_departments enable constraint dep_mgr_id_fk;
 
-prompt Views anlegen
+prompt ******  Creating Views
+prompt .  HR_EMP_DETAILS
+create or replace view hr_emp_details as
+select emp_id, job_id, emp_mgr_id, dep_id, loc_id, cou_id,
+       emp_first_name, emp_last_name, emp_salary, emp_commission_pct, dep_name,
+       job_title, substr(job_id, 4) job_group, loc_city, loc_state_province, cou_name, reg_name
+  from hr_employees
+  join hr_departments on emp_dep_id = dep_id
+  join hr_jobs on emp_job_id = job_id
+  join hr_locations on dep_loc_id = loc_id
+  join hr_countries on loc_cou_id = cou_id
+  join hr_regions on cou_reg_id = reg_id
+with read only;
  
 prompt .  HR_EMP_DETAILS
 create or replace view hr_emp_details as

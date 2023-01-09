@@ -1,0 +1,30 @@
+Installationsanweisung
+
+1. Installation auf lokaler Datenbank mit Administrationszugriff
+- Navigieren Sie in der Kommandozeile zum Ordner, in dem diese Datei liegt
+- Melden Sie sich in SQL*Plus als Administrator an
+- Rufen Sie das Skript create_users.sql auf: @create_users.sql
+
+2. Installation auf Datenbank ohne Administrationszugriff
+- Navigieren Sie in der Kommandozeile zum Ordner, in dem diese Datei liegt
+- Melden Sie sich in SQL*Plus als der Benutzer des APEX-Workspaces an
+- Rufen Sie das Skript install_no_code.sql auf: @create_users.sql
+- Falls nicht bereits eingerichtet, bitten Sie den Administrator, folgenden Skript auszuführen:
+
+begin
+  dbms_network_acl_admin.append_host_ace( 
+    host => 'raw.githubusercontent.com', 
+    lower_port => 80,
+    upper_port => 80,
+    ace => xs$ace_type(
+             privilege_list => xs$name_list('http'), 
+             principal_name => '&APEX_USER.',
+             principal_type => xs_acl.ptype_db));
+end; 
+/
+
+3. Installation auf APEX-Workspace in der Cloud
+- Melden Sie sich am Workspace an
+- Navigieren Sie zum SQL-Worksheet => SQL-Skripts
+- Laden Sie den Skripts install_no_code.sql hoch.
+- Führen Sie den hochgeladenen Skript aus.

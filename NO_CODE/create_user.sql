@@ -1,4 +1,4 @@
-create user buch_no_code identified by "start!1234" default tablespace users;
+create user buch_no_code identified by "Start!1234" default tablespace users;
 
 grant connect, resource to buch_no_code;
 
@@ -28,4 +28,4 @@ end;
 /
 
 alter session set current_schema=BUCH_NO_CODE;
-@install.sql
+@install_no_code.sql
