@@ -55,6 +55,10 @@ grant resource, connect, create procedure, alter session to &LC_UTILS.;
 
 prompt * Install user objects
 
+prompt . APEX Workspace
+alter session set current_schema=&LC_APEX.;
+@create_workspace.sql
+
 prompt . User &LC_UTILS.
 alter session set current_schema=&LC_UTILS.;
 @install_buch_lc_utils.sql

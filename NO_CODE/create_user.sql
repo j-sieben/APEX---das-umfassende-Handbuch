@@ -28,4 +28,5 @@ end;
 /
 
 alter session set current_schema=BUCH_NO_CODE;
+@create_workspace.sql
 @install_no_code.sql
