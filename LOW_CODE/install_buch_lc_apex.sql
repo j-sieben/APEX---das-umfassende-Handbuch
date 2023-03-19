@@ -15,7 +15,7 @@ whenever sqlerror exit sql.sqlcode rollback
 --
 --------------------------------------------------------------------------------
 begin
-  wwv_flow_api.import_begin (
+  wwv_flow_api.import_begin(
     p_version_yyyy_mm_dd=>'2021.10.15',
     p_default_workspace_id=>17504259117959332
   );
@@ -69,6 +69,8 @@ begin
    ,p_env_banner_yn => 'N'
    ,p_env_banner_pos => 'LEFT'
   );
+exception
+  when others then null;
 end;
 /
 ----------------
@@ -82,6 +84,7 @@ begin
     p_SECURITY_GROUP_ID => 10,
     p_GROUP_DESC => 'Users authorized to register OAuth2 Client Applications');
     
+  wwv_flow_fnd_user_api.create_user_group (
     p_id => 2400523155815034,
     p_GROUP_NAME => 'RESTful Services',
     p_SECURITY_GROUP_ID => 10,
@@ -92,6 +95,8 @@ begin
     p_GROUP_NAME => 'SQL Developer',
     p_SECURITY_GROUP_ID => 10,
     p_GROUP_DESC => 'Users authorized to use SQL Developer with this workspace');
+exception
+  when dup_val_on_index then null;
 end;
 /
 prompt  Creating group grants...
@@ -169,6 +174,8 @@ begin
     p_allow_websheet_dev_yn        => 'N',
     p_allow_team_development_yn    => 'N',
     p_allow_access_to_schemas      => '');
+exception
+  when dup_val_on_index then null;
 end;
 /
 prompt Check Compatibility...
@@ -209,6 +216,34 @@ begin
   end loop;
 end;
 /
+
+
+prompt * Vorwaeertsdeklaration Packages-Spezifikation
+prompt . EMP_UI
+create or replace package emp_ui
+  authid definer
+as
+  subtype flag_type is char(1 byte);
+  subtype ora_name_type is varchar2(128 byte);
+  
+  function c_true
+    return flag_type;
+    
+  function c_false
+    return flag_type;
+    
+  function c_update
+    return flag_type;
+    
+  function c_insert
+    return flag_type;
+    
+  function c_delete
+    return flag_type;
+    
+end emp_ui;
+/
+
 
 prompt * Erstelle Views
 prompt . EMP_UI_DEPT_OVERVIEW_EMPLOYEES
@@ -591,6 +626,15 @@ as
     
   function c_false
     return flag_type;
+    
+  function c_update
+    return flag_type;
+    
+  function c_insert
+    return flag_type;
+    
+  function c_delete
+    return flag_type;
 
   function check_email_is_unique(
     p_emp_id in varchar2,
@@ -719,6 +763,29 @@ as
   begin
     return 'N';
   end c_false;
+    
+  function c_update
+    return flag_type
+  as
+  begin
+    return 'U';
+  end c_update;
+  
+    
+  function c_insert
+    return flag_type
+  as
+  begin
+    return 'C';
+  end c_insert;
+  
+    
+  function c_delete
+    return flag_type
+  as
+  begin
+    return 'D';
+  end c_delete;
   
 
   function check_email_is_unique(

@@ -1,21 +1,41 @@
+
+define LC_UTIL = BUCH_LC_UTIL
 define LC_DATA = BUCH_LC_DATA
 define LC_APEX = BUCH_LC_APEX
 define LC_REST = BUCH_LC_REST
 define PWD = "Start!234"
 
+declare
+  cursor user_cur is
+    select username
+      from all_users
+     where username in ('&LC_APEX.', '&LC_REST.', '&LC_DATA.', '&LC_UTIL.');
+begin
+  for usr in user_cur loop
+    execute immediate 'drop user ' || usr.username || ' cascade';
+  end loop;
+end;
+/
+
 prompt * Extend role RESOURCE with CREATE VIEW, MATERIALIZED VIEW and SYNONYM
 grant create view, create materialized view, create synonym to resource;
 
 prompt * Create users
+prompt . User &LC_UTIL.
+
+create user &LC_UTIL. identified by "&PWD." default tablespace users quota unlimited on users;
+
+grant connect, resource to &LC_UTIL.;
+
 prompt . User &LC_DATA.
 
-create user &LC_DATA. identified by &PWD. default tablespace users quota unlimited on users;
+create user &LC_DATA. identified by "&PWD." default tablespace users quota unlimited on users;
 
 grant connect, resource to &LC_DATA.;
 
 
 prompt . &LC_APEX.
-create user &LC_APEX. identified by &PWD.  default tablespace users quota unlimited on users;
+create user &LC_APEX. identified by "&PWD."  default tablespace users quota unlimited on users;
 
 grant connect, resource to &LC_APEX.;
 
@@ -41,7 +61,7 @@ end;
 /
 
 prompt . User &LC_REST.
-create user &LC_REST. identified by &PWD. default tablespace users quota unlimited on users;
+create user &LC_REST. identified by "&PWD." default tablespace users quota unlimited on users;
 
 grant connect, resource to &LC_REST.;
 
