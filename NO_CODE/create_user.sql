@@ -1,4 +1,4 @@
-create user buch_no_code identified by "start!1234" default tablespace users;
+create user buch_no_code identified by "Start!234" default tablespace users;
 
 grant connect, resource to buch_no_code;
 
